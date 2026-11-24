@@ -1,0 +1,634 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="description" content="阅读日历与阅读时长排行">
+<title>阅读日历 · 纸上年轮</title>
+<style>
+:root{
+ --canvas:#F7F5F0; --surface:#FFFFFF; --surface-sunken:#EFEBE2; --hover:#F3F0E8;
+ --ink:#1F1D1A; --ink-2:#6B665E; --ink-3:#9A948A; --ink-invert:#FFFFFF;
+ --line:#E8E3D9; --line-strong:#D8D1C3;
+ --accent:#2E4A43; --accent-soft:#E6EDE9;
+ --shadow-1:0 1px 2px rgba(60,50,35,.05);
+ --shadow-2:0 1px 2px rgba(60,50,35,.05),0 10px 28px rgba(60,50,35,.07);
+ --shadow-hover:0 4px 12px rgba(60,50,35,.12);
+ --r-card:14px; --r-cover:5px; --r-bar:4px;
+ --font-sans:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Hiragino Sans GB","Microsoft YaHei","Source Han Sans SC","Noto Sans CJK SC",sans-serif;
+ --font-mono:ui-monospace,"SF Mono","Cascadia Mono",Consolas,monospace;
+}
+*,*::before,*::after{box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{margin:0;background:var(--canvas);color:var(--ink);font:14px/1.6 var(--font-sans);-webkit-font-smoothing:antialiased;overflow-x:hidden}
+.mono,.kpi-num,.rank-num,.rank-time-num,.tip-total,.detail-time,.tip-time{font-family:var(--font-mono);font-variant-numeric:tabular-nums}
+.page{max-width:1240px;margin:0 auto;padding:32px}
+.site-header{padding-top:8px}
+.header-top{display:flex;align-items:flex-end;justify-content:space-between;gap:24px}
+.rule-title{position:relative;padding-left:16px}
+.rule-title::before{content:"";position:absolute;left:0;top:50%;transform:translateY(-50%);width:4px;height:32px;background:var(--accent);border-radius:2px}
+h1{font-size:32px;font-weight:700;line-height:1.25;margin:0;letter-spacing:.02em}
+h2{font-size:20px;font-weight:600;line-height:1.4;margin:0}
+h3{font-size:15px;font-weight:600;line-height:1.4;margin:0}
+.subtitle{margin:8px 0 0 16px;font-size:12px;color:var(--ink-2)}
+.anchors{display:flex;gap:24px;padding-bottom:6px}
+.anchors a{font-size:14px;color:var(--ink-2);text-decoration:none;border-bottom:1px solid transparent;padding-bottom:2px;transition:color 150ms ease,border-color 150ms ease}
+.anchors a:hover,.anchors a[aria-current="true"]{color:var(--accent);border-bottom-color:var(--accent)}
+.kpis{display:grid;grid-template-columns:repeat(4,1fr);margin:28px 0 0;padding:0;background:var(--surface);border:1px solid var(--line);border-radius:var(--r-card);box-shadow:var(--shadow-1)}
+.kpi{position:relative;padding:24px 28px}
+.kpi:not(:last-child)::after{content:"";position:absolute;right:0;top:24px;bottom:24px;width:1px;background:var(--line)}
+.kpi dt{font-size:12px;color:var(--ink-2)}
+.kpi dd{margin:10px 0 0;display:flex;align-items:baseline;gap:6px}
+.kpi-num{font-size:36px;font-weight:600;line-height:1}
+.kpi-unit{font-size:12px;font-weight:400;color:var(--ink-2)}
+main{display:flex;flex-direction:column;gap:24px;margin-top:24px}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:var(--r-card);padding:28px 32px;box-shadow:var(--shadow-2)}
+.card-head{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+.head-spacer{flex:1 1 auto}
+.card-note,.rank-note,.sort-note{margin:12px 0 0 16px;font-size:12px;color:var(--ink-3)}
+.rank-note,.sort-note{color:var(--ink-2)}
+.legend{margin-left:auto;display:flex;align-items:center;gap:16px;font-size:12px;color:var(--ink-2)}
+.legend span{white-space:nowrap}
+.legend i{display:inline-block;width:12px;height:16px;border-radius:3px;background:var(--accent);vertical-align:-4px;margin-right:5px}
+.legend i.l1{opacity:.45}.legend i.l2{opacity:.72}.legend i.l3{opacity:1;box-shadow:inset 0 0 0 2px var(--accent)}
+.sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
+.focus-chip{display:inline-flex;align-items:center;gap:6px;height:28px;max-width:100%;padding:0 8px;background:var(--accent-soft);color:var(--accent);border:1px solid rgba(46,74,67,.22);border-radius:6px;font-size:12px;font-weight:600}
+.focus-chip[hidden]{display:none}
+.focus-chip img{width:12px;height:18px;object-fit:cover;border-radius:2px;background:var(--surface-sunken)}
+.focus-chip svg{flex:none}
+.focus-chip button{width:16px;height:16px;display:inline-flex;align-items:center;justify-content:center;border:0;background:transparent;color:inherit;cursor:pointer;padding:0}
+.calendar-scroll{margin-top:20px;overflow-x:auto;overflow-y:hidden;padding:4px 4px 12px;scrollbar-width:thin}
+.cal-table{border-collapse:separate;border-spacing:4px 4px;table-layout:fixed;margin:0 auto}
+.cal-table th.month-th{font-size:12px;font-weight:400;color:var(--ink-2);text-align:left;padding:0 0 2px 2px;height:18px;white-space:nowrap;vertical-align:bottom}
+.cal-table th.rowhead{font-size:12px;font-weight:400;color:var(--ink-3);width:20px;min-width:20px;text-align:center;padding:0;background:var(--surface)}
+.cal-table td{width:30px;min-width:30px;height:42px;padding:0;vertical-align:top;position:relative}
+.cell{position:relative;display:block;width:30px;height:42px;border-radius:var(--r-cover);cursor:pointer;transform:none;transition:transform 150ms ease,box-shadow 150ms ease}
+.cell .cover{display:block;width:100%;height:100%;object-fit:cover;border-radius:var(--r-cover);background:var(--surface-sunken);transition:opacity 150ms ease}
+.cell.t1 .cover{opacity:.45}
+.cell.t2 .cover{opacity:.72}
+.cell.t3 .cover{box-shadow:0 0 0 2px var(--cover-color)}
+.cell::after{content:"";position:absolute;inset:0;border-radius:var(--r-cover);background:rgba(247,245,240,.62);opacity:0;pointer-events:none;z-index:3;transition:opacity 150ms ease}
+.cell:hover{transform:scale(1.08);box-shadow:var(--shadow-hover);z-index:6}
+.cell.is-focused{transform:scale(1.05)}
+.cell.is-focused:hover,.cell:focus-visible{transform:scale(1.08)}
+.cell:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.day-cell:focus-visible{outline:2px solid var(--accent);outline-offset:2px;border-radius:var(--r-cover)}
+.day-cell:focus-visible .cell{box-shadow:var(--shadow-hover)}
+.cell.is-selected{box-shadow:0 0 0 2px var(--accent)!important;z-index:5}
+.slot{display:block;width:30px;height:42px;border-radius:4px;background:var(--surface-sunken)}
+.pad{display:block;width:30px;height:42px}
+.extras{position:absolute;right:-3px;bottom:-3px;display:flex;align-items:flex-end;gap:1px;pointer-events:none;z-index:2}
+.extra{display:block;width:12px;height:16px;object-fit:cover;border-radius:2px;border:1px solid #FFFFFF;background:var(--surface-sunken);box-shadow:0 1px 2px rgba(60,50,35,.18)}
+.extra-dot{display:block;width:6px;height:6px;margin-bottom:3px;border-radius:50%;background:var(--dot-color,var(--accent));border:1px solid #FFFFFF;flex:none}
+.extra-more{display:flex;align-items:center;justify-content:center;width:14px;height:16px;border-radius:2px;border:1px solid #FFFFFF;background:var(--accent);color:var(--ink-invert);font:9px/1 var(--font-mono)}
+.fallback{display:flex!important;align-items:center;justify-content:center;background:var(--cover-color,var(--accent));color:var(--ink-invert);font-weight:600;object-fit:fill!important}
+.cal-table.is-book-focus .cell:not(.book-hit)::after{opacity:1}
+.cal-table.is-book-focus .cell:not(.book-hit):hover::after,
+.cal-table.is-book-focus .day-cell:focus-visible .cell:not(.book-hit)::after{opacity:.2}
+.cal-table.is-book-focus .cell.book-hit{box-shadow:0 0 0 2px var(--accent);transform:scale(1.05)}
+.scroll-hint{display:none;margin:8px 0 0;text-align:right;font-size:12px;color:var(--ink-3)}
+.day-detail{margin-top:16px;min-height:76px;border-top:1px solid var(--line);padding-top:16px;background:transparent;font-size:14px}
+.day-detail .empty-hint{font-size:12px;color:var(--ink-3)}
+.detail-head{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+.detail-date{font-size:15px;font-weight:600}
+.detail-total{font-family:var(--font-mono);font-variant-numeric:tabular-nums;font-size:18px;font-weight:600;color:var(--ink)}
+.detail-list{display:flex;gap:16px;flex-wrap:wrap;align-items:center;margin-top:10px}
+.detail-item{display:flex;align-items:center;gap:8px;font-size:12px}
+.detail-cover{display:block;width:24px;height:36px;object-fit:cover;border-radius:3px;border:1px solid var(--line);background:var(--surface-sunken)}
+.detail-name{font-size:12px;color:var(--ink)}
+.dot{width:8px;height:8px;border-radius:50%;flex:none;background:var(--dot-color,var(--accent))}
+.detail-time{font-family:var(--font-mono);font-variant-numeric:tabular-nums;font-size:12px;color:var(--ink-2)}
+.detail-close{margin-left:auto;border:0;background:transparent;color:var(--ink-2);padding:4px;cursor:pointer;display:inline-flex;align-items:center}
+.detail-close:hover{color:var(--ink)}
+.sort-group{display:flex;align-items:center;gap:20px;background:transparent}
+.sort-group button{display:inline-flex;align-items:center;gap:4px;border:0;border-bottom:2px solid transparent;background:transparent;color:var(--ink-2);font:inherit;font-size:14px;font-weight:400;padding:6px 0 8px;border-radius:0;cursor:pointer;transition:color 150ms ease,border-color 150ms ease}
+.sort-group button:hover{color:var(--ink)}
+.sort-group button[aria-pressed="true"]{color:var(--ink);font-weight:600;border-bottom-color:var(--accent)}
+.rank-list{list-style:none;margin:20px 0 0;padding:0}
+.rank-row{position:relative;display:grid;grid-template-columns:52px 48px minmax(0,1fr) 132px;align-items:center;gap:16px;min-height:72px;padding:0 8px;transition:background 150ms ease}
+.rank-row::after{content:"";position:absolute;left:140px;right:8px;bottom:0;height:1px;background:var(--line)}
+.rank-row:last-child::after{display:none}
+.rank-row:hover{background:var(--hover)}
+.rank-row.is-focused,.rank-row.is-linked{background:var(--accent-soft);box-shadow:inset 3px 0 0 var(--accent)}
+.rank-num{font-size:20px;font-weight:600;color:var(--ink-3);text-align:left}
+.rank-row:nth-child(-n+3) .rank-num{color:var(--accent)}
+.rank-cover{display:block;width:48px;height:72px;position:relative}
+.rank-cover-img{display:block;width:48px;height:72px;object-fit:cover;border-radius:4px;box-shadow:var(--shadow-1);transition:transform 150ms ease}
+.rank-row:hover .rank-cover-img{transform:scale(1.03)}
+.rank-body{min-width:0}
+.rank-title-line{display:flex;align-items:baseline;gap:10px;min-width:0}
+.rank-body h3{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.rank-author{font-size:12px;color:var(--ink-3);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:none;max-width:38%}
+.bar-track{display:block;height:8px;border-radius:var(--r-bar);background:var(--surface-sunken);margin-top:10px;overflow:hidden;cursor:help}
+.bar-fill{display:block;height:100%;border-radius:var(--r-bar);width:var(--w);background:var(--cover-color);transform-origin:left center;animation:barIn 600ms cubic-bezier(.2,.8,.2,1) both}
+.bar-fill.striped{background-image:repeating-linear-gradient(45deg,rgba(255,255,255,.42) 0 4px,transparent 4px 8px)}
+.rank-time{display:block;text-align:right}
+.rank-time-num{font-size:18px;font-weight:600}
+.rank-time-unit{font-size:12px;color:var(--ink-2);margin-left:3px}
+.rank-days{display:block;font-size:12px;color:var(--ink-3);margin-top:4px}
+.rank-row{cursor:pointer}
+@keyframes barIn{from{transform:scaleX(0)}to{transform:scaleX(1)}}
+@keyframes cellIn{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:translateY(0)}}
+.enter-cell{animation:cellIn 300ms ease both;animation-delay:calc(var(--col) * 20ms)}
+.tooltip{position:fixed;z-index:100;max-width:320px;background:var(--surface);border:1px solid var(--line);border-radius:8px;box-shadow:var(--shadow-2);padding:12px 14px;pointer-events:none;font-size:12px;color:var(--ink-2);opacity:0;transform:translateY(4px);transition:opacity 120ms ease,transform 120ms ease}
+.tooltip.is-visible{opacity:1;transform:translateY(0)}
+.tooltip[hidden]{display:none}
+.tip-date{font-size:14px;font-weight:600;color:var(--ink)}
+.tip-total{margin-top:6px;font-size:18px;font-weight:600;color:var(--accent)}
+.tip-list{margin-top:8px;display:flex;flex-direction:column;gap:5px}
+.tip-item{display:flex;align-items:center;gap:8px;font-size:14px;color:var(--ink)}
+.tip-time{margin-left:auto;font-size:12px;color:var(--ink-2);white-space:nowrap}
+.tip-foot{margin-top:9px;font-size:12px;color:var(--ink-3)}
+footer{max-width:1240px;margin:0 auto;padding:8px 32px 40px;display:flex;justify-content:space-between;align-items:center;gap:16px;font-size:12px;color:var(--ink-3)}
+footer a{color:var(--ink-2);text-decoration:none}
+footer a:hover{color:var(--accent)}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+@media(max-width:1023px){
+ .calendar-scroll{position:relative;margin-right:-8px;padding-right:28px;box-shadow:inset -12px 0 12px -12px rgba(60,50,35,.12)}
+ .cal-table{margin:0}
+ .cal-table th.rowhead{position:sticky;left:0;z-index:3}
+ .scroll-hint{display:block}
+ .rank-body h3{white-space:normal;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}
+}
+@media(max-width:767px){
+ .page{padding:20px 16px}
+ .header-top{align-items:flex-start;flex-wrap:wrap;gap:12px}
+ h1{font-size:32px}
+ .anchors{margin-left:auto}
+ .kpis{grid-template-columns:repeat(2,1fr);column-gap:16px;margin-top:22px}
+ .kpi{padding:18px 20px}
+ .kpi:not(:last-child)::after{display:none}
+ .kpi:nth-child(-n+2){border-bottom:1px solid var(--line)}
+ .kpi-num{font-size:20px}
+ .card{padding:20px 16px}
+ .card-head{gap:12px}
+ .legend{margin-left:0;order:3;width:100%;gap:12px;flex-wrap:wrap}
+ .sort-group{order:3;width:100%;gap:8px}
+ .sort-group button{flex:1;height:28px;min-height:28px;padding:0 8px;justify-content:center;border:1px solid var(--line);border-bottom:1px solid var(--line);border-radius:6px;font-size:12px}
+ .sort-group button[aria-pressed="true"]{background:var(--accent-soft);color:var(--accent);border-color:rgba(46,74,67,.22)}
+ .cal-table{border-spacing:4px 4px}
+ .cal-table td{width:36px;min-width:36px;height:48px}
+ .cell,.slot,.pad{width:36px;height:48px}
+ .cell{padding:3px}
+ .cell .cover{width:30px;height:42px;margin:0 auto}
+ .slot,.pad{width:30px;height:42px;margin:3px auto}
+ .extras{right:0;bottom:0}
+ .rank-row{grid-template-columns:34px 40px minmax(0,1fr) auto;grid-template-areas:"num cover title time" "num cover bar bar";column-gap:12px;row-gap:8px;min-height:92px;padding:10px 4px}
+ .rank-row::after{left:4px;right:4px}
+ .rank-row .rank-num{grid-area:num;font-size:18px}
+ .rank-row .rank-cover{grid-area:cover;width:40px;height:60px}
+ .rank-row .rank-cover-img{width:40px;height:60px}
+ .rank-row .rank-body{display:contents}
+ .rank-row .rank-title-line{grid-area:title;min-width:0}
+ .rank-row .bar-track{grid-area:bar;margin-top:0}
+ .rank-row .rank-time{grid-area:time;align-self:center}
+ .rank-author{max-width:100%}
+ .detail-close{margin-left:0}
+ footer{padding:8px 16px 32px;flex-direction:column;align-items:flex-start;gap:8px}
+}
+@media(prefers-reduced-motion:reduce){
+ html{scroll-behavior:auto}
+ *,*::before,*::after{animation:none!important;transition:none!important}
+ .cell:hover,.cell:focus-visible,.cell.is-focused,.rank-row:hover .rank-cover-img{transform:none!important}
+ .tooltip{opacity:1!important;transform:none!important}
+}
+</style>
+</head>
+<body>
+<header class="site-header page" id="top">
+  <div class="header-top">
+    <div>
+      <h1 class="rule-title">阅读日历</h1>
+      <p class="subtitle" id="subtitle"></p>
+    </div>
+    <nav class="anchors" aria-label="页面导航">
+      <a href="#calendar" data-anchor="calendar" aria-current="true">日历</a>
+      <a href="#ranking" data-anchor="ranking" aria-current="false">排行</a>
+    </nav>
+  </div>
+  <dl class="kpis" aria-label="阅读总览">
+    <div class="kpi"><dt>总时长</dt><dd><span class="kpi-num"><span id="kpiHours"></span></span><span class="kpi-unit">h</span></dd></div>
+    <div class="kpi"><dt>阅读天数</dt><dd><span class="kpi-num"><span id="kpiDays"></span></span><span class="kpi-unit">天</span></dd></div>
+    <div class="kpi"><dt>书籍</dt><dd><span class="kpi-num"><span id="kpiBooks"></span></span><span class="kpi-unit">本</span></dd></div>
+    <div class="kpi"><dt>跨度</dt><dd><span class="kpi-num"><span id="kpiSpan"></span></span><span class="kpi-unit">天</span></dd></div>
+  </dl>
+</header>
+
+<main class="page">
+  <section class="card calendar-card" id="calendar" aria-labelledby="cal-title">
+    <div class="card-head">
+      <h2 id="cal-title" class="rule-title">阅读日历</h2>
+      <div class="legend" aria-label="当日阅读时长图例">
+        <span><i class="l1" aria-hidden="true"></i>&lt;30分钟</span>
+        <span><i class="l2" aria-hidden="true"></i>30–90分钟</span>
+        <span><i class="l3" aria-hidden="true"></i>&gt;90分钟</span>
+      </div>
+    </div>
+    <p class="card-note">封面为当天阅读最久的书 · 单击查看当日书单 · 方向键可在日历中移动</p>
+    <div class="calendar-scroll" id="calScroll">
+      <table class="cal-table" id="calTable" role="grid" aria-label="2026年7月15日至11月24日阅读日历，列为周，行为星期一至星期日"></table>
+    </div>
+    <p class="scroll-hint">横向滚动查看 →</p>
+    <div class="day-detail" id="dayDetail" aria-live="polite"><span class="empty-hint">点击日历格子查看当日阅读详情</span></div>
+  </section>
+
+  <section class="card ranking-card" id="ranking" aria-labelledby="rank-title">
+    <div class="card-head">
+      <h2 id="rank-title" class="rule-title">阅读时长排行</h2>
+      <span class="head-spacer" aria-hidden="true"></span>
+      <div class="focus-chip" id="rankChip" hidden></div>
+      <div class="sort-group" role="group" aria-label="排行榜排序方式">
+        <button type="button" data-sort="minutes" aria-pressed="true">时长<svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 2v7M3.5 6.5L6 9l2.5-2.5"/></svg></button>
+        <button type="button" data-sort="days" aria-pressed="false">天数<svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 2v7M3.5 6.5L6 9l2.5-2.5"/></svg></button>
+        <button type="button" data-sort="title" aria-pressed="false">书名<svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 10V3M3.5 5.5L6 3l2.5 2.5"/></svg></button>
+      </div>
+    </div>
+    <p class="rank-note">为让短时长书籍也可见，条长按平方根缩放；条长不代表线性比例，比较请看右侧真实数字。</p>
+    <p class="sort-note" id="sortNote" hidden></p>
+    <ol class="rank-list" id="rankList"></ol>
+  </section>
+</main>
+
+<footer>
+  <span><span id="footNote"></span></span>
+  <a href="#top">回到顶部 ↑</a>
+</footer>
+
+<div class="tooltip" id="tooltip" role="tooltip" hidden></div>
+
+<script>
+const DATA = __DATA_JSON__;
+(function(){
+'use strict';
+var WEEK_CN=['一','二','三','四','五','六','日'];
+var WEEK_FULL=['星期日','星期一','星期二','星期三','星期四','星期五','星期六'];
+var DAY_MS=86400000;
+var booksById={};DATA.books.forEach(function(b){booksById[b.id]=b});
+var maxMinutes=Math.max.apply(null,DATA.books.map(function(b){return b.minutes}));
+var totalMinutes=DATA.books.reduce(function(s,b){return s+b.minutes},0);
+function parseDay(s){var p=s.split('-');return Date.UTC(+p[0],+p[1]-1,+p[2])}
+function dateStr(ts){var d=new Date(ts);return d.getUTCFullYear()+'-'+String(d.getUTCMonth()+1).padStart(2,'0')+'-'+String(d.getUTCDate()).padStart(2,'0')}
+function weekIdx(ts){return (new Date(ts).getUTCDay()+6)%7}
+function esc(s){return String(s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]})}
+function fmtDuration(min){
+  var totalSec=Math.round(min*60);
+  if(totalSec<60)return '不足1分钟';
+  if(totalSec<3600){
+    var m=Math.round(totalSec/6)/10;
+    return (Math.round(m*10)%10===0?m.toFixed(0):m.toFixed(1))+'分钟';
+  }
+  var m2=Math.floor(totalSec/60),h=Math.floor(m2/60),r=m2%60;
+  return r?h+'小时'+r+'分':h+'小时';
+}
+function fullDate(ts){var d=new Date(ts);return d.getUTCFullYear()+'年'+(d.getUTCMonth()+1)+'月'+d.getUTCDate()+'日 '+WEEK_FULL[d.getUTCDay()]}
+function tierOf(min){return min<30?1:(min<=90?2:3)}
+function dotHtml(b){return '<i class="dot" style="--dot-color:'+esc(b.color)+'" aria-hidden="true"></i>'}
+
+var firstTs=parseDay(DATA.meta.firstDay),lastTs=parseDay(DATA.meta.lastDay);
+var gridStart=firstTs-weekIdx(firstTs)*DAY_MS;
+var gridEnd=lastTs+(6-weekIdx(lastTs))*DAY_MS;
+var weeks=Math.ceil((lastTs-gridStart+DAY_MS)/(7*DAY_MS));
+var table=document.getElementById('calTable');
+var detail=document.getElementById('dayDetail');
+var rankChip=document.getElementById('rankChip');
+var ICON_CLOSE='<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" aria-hidden="true"><path d="M4 4l8 8M12 4l-8 8"/></svg>';
+var ICON_CAL='<svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.2" aria-hidden="true"><rect x="1.5" y="2.5" width="9" height="8" rx="1.5"/><path d="M1.5 5h9M4 1.5v2M8 1.5v2"/></svg>';
+function chipHtml(text,icon){return (icon||'')+'<span>'+esc(text)+'</span><button type="button" aria-label="清除焦点">'+ICON_CLOSE+'</button>'}
+var rankList=document.getElementById('rankList');
+var sortNote=document.getElementById('sortNote');
+var tip=document.getElementById('tooltip');
+var state=null,rovingDate=null,tipTimer=null,sortKey='minutes';
+// ---- populate header/KPI/footer from DATA (data-driven, reusable) ----
+function fmtDateRange(a,b){
+  function p(s){var x=s.split('-');return x[0]+'.'+x[1]+'.'+x[2]}
+  return p(a)+' — '+p(b);
+}
+(function populateChrome(){
+  var s=DATA.stats,m=DATA.meta;
+  var sub=document.getElementById('subtitle');
+  if(sub)sub.textContent=fmtDateRange(m.firstDay,m.lastDay)+' · '+m.source;
+  var kh=document.getElementById('kpiHours'); if(kh)kh.textContent=s.totalHours;
+  var kd=document.getElementById('kpiDays');  if(kd)kd.textContent=s.activeDays;
+  var kb=document.getElementById('kpiBooks'); if(kb)kb.textContent=s.bookCount;
+  var ks=document.getElementById('kpiSpan');  if(ks)ks.textContent=s.spanDays;
+  var fn=document.getElementById('footNote');
+  if(fn){
+    var parts=['数据来源 '+m.source,'生成于 '+m.generated,
+               '已剔除阅读 <'+m.thresholdSeconds/60+' 分钟的书籍（'+m.excludedBooks+' 本）'];
+    if(m.mergedEditions)parts.push('已合并 '+m.mergedEditions+' 组同书不同版本');
+    fn.textContent=parts.join(' · ');
+  }
+})();
+
+function coverFallbackWrap(html,book){
+  var box=document.createElement('div');box.innerHTML=html;
+  var img=box.firstElementChild;
+  img.addEventListener('error',function(){
+    var span=document.createElement('span');
+    span.className=img.className+' fallback';
+    span.textContent=book.shortTitle.slice(0,1);
+    img.replaceWith(span);
+  });
+  return box.firstElementChild;
+}
+
+function buildCalendar(){
+  var h='<thead><tr><th class="rowhead" scope="col"><span class="sr-only">星期</span></th>';
+  var lastMonth=-1;
+  for(var w=0;w<weeks;w++){
+    var label='';
+    for(var d=0;d<7;d++){
+      var ts=gridStart+(w*7+d)*DAY_MS;
+      if(ts<firstTs||ts>lastTs)continue;
+      var mo=new Date(ts).getUTCMonth();
+      if(mo>lastMonth){lastMonth=mo;label=(mo+1)+'月';break}
+    }
+    h+='<th class="month-th" scope="colgroup">'+(label?'&nbsp;'+label:'')+'</th>';
+  }
+  h+='</tr></thead><tbody>';
+  for(var r=0;r<7;r++){
+    h+='<tr><th class="rowhead" scope="row">'+WEEK_CN[r]+'</th>';
+    for(var c=0;c<weeks;c++){
+      var ts=gridStart+(c*7+r)*DAY_MS;
+      var ds=dateStr(ts);
+      if(ts<firstTs||ts>lastTs){h+='<td class="pad-cell" aria-hidden="true"><span class="pad"></span></td>';continue}
+      var entries=DATA.calendar[ds];
+      if(!entries||!entries.length){
+        h+='<td class="empty-cell" role="gridcell" tabindex="-1" aria-disabled="true" aria-label="'+fullDate(ts)+'，无阅读记录" data-date="'+ds+'"><span class="slot"></span></td>';
+        continue;
+      }
+      var sorted=entries.slice().sort(function(a,b){return b.minutes-a.minutes});
+      var primary=booksById[sorted[0].bookId];
+      var total=sorted.reduce(function(s,e){return s+e.minutes},0);
+      var t=tierOf(total);
+      var labels=sorted.map(function(e){var b=booksById[e.bookId];return b.shortTitle+' '+fmtDuration(e.minutes)}).join('；');
+      var aria=fullDate(ts)+'，'+labels+'，合计'+(Math.round(total*10)/10)+'分钟';
+      var img='<img class="cover" src="'+esc(primary.cover)+'" alt="" decoding="async">';
+      var extras='';
+      if(sorted.length>1){
+        var eb=booksById[sorted[1].bookId];
+        extras='<span class="extras" aria-hidden="true"><img class="extra" src="'+esc(eb.cover)+'" alt="" decoding="async">';
+        if(sorted.length===3){
+          var third=booksById[sorted[2].bookId];
+          extras+='<i class="extra-dot" style="--dot-color:'+esc(third.color)+'"></i>';
+        }else if(sorted.length>3)extras+='<span class="extra-more">'+(sorted.length-2)+'</span>';
+        extras+='</span>';
+      }
+      h+='<td class="day-cell" role="gridcell" tabindex="-1" aria-label="'+esc(aria)+'" data-date="'+ds+'" data-ids="'+sorted.map(function(e){return e.bookId}).join(',')+'">'+
+         '<span class="cell enter-cell t'+t+'" style="--cover-color:'+esc(primary.color)+';--col:'+c+'">'+img+extras+'</span></td>';
+    }
+    h+='</tr>';
+  }
+  h+='</tbody>';
+  table.innerHTML=h;
+  var cells=table.querySelectorAll('.cell');
+  for(var i=0;i<cells.length;i++)attachCover(cells[i],booksById[+(cells[i].parentNode.getAttribute('data-ids')||'').split(',')[0]],'cover');
+  var extraImgs=table.querySelectorAll('img.extra');
+  for(var j=0;j<extraImgs.length;j++){
+    (function(img){
+      var cand=DATA.books.filter(function(b){return b.cover===img.getAttribute('src')})[0];
+      if(!cand)return;
+      img.addEventListener('error',function(){var s=document.createElement('span');s.className='extra fallback';s.style.setProperty('--cover-color',cand.color);s.textContent=cand.shortTitle.slice(0,1);img.replaceWith(s)});
+    })(extraImgs[j]);
+  }
+}
+function attachCover(el,book){
+  var img=el.querySelector('img.cover');
+  if(!img||!book)return;
+  img.addEventListener('error',function(){
+    var s=document.createElement('span');
+    s.className='cover fallback';
+    s.textContent=book.shortTitle.slice(0,1);
+    img.replaceWith(s);
+  });
+}
+function setRoving(ds){
+  rovingDate=ds;
+  var cells=table.querySelectorAll('.cell');
+  for(var i=0;i<cells.length;i++)cells[i].parentNode.tabIndex=cells[i].parentNode.getAttribute('data-date')===ds?0:-1;
+}
+function navigate(cur,dCol,dRow,edge){
+  var ts=parseDay(cur),col=Math.floor((ts-gridStart)/(7*DAY_MS)),row=weekIdx(ts);
+  if(edge==='home'||edge==='end'){
+    var targetRow=row;
+    var startCol=edge==='home'?0:weeks-1;
+    var step=edge==='home'?1:-1;
+    for(var c=startCol;c>=0&&c<weeks;c+=step){
+      var t0=gridStart+(c*7+targetRow)*DAY_MS;
+      if(t0<firstTs||t0>lastTs)continue;
+      var ds0=dateStr(t0);
+      if(DATA.calendar[ds0])return ds0;
+    }
+    return null;
+  }
+  while(true){
+    col+=dCol;row+=dRow;
+    if(col<0||col>=weeks||row<0||row>6)return null;
+    var t=gridStart+(col*7+row)*DAY_MS;
+    if(t<firstTs||t>lastTs)continue;
+    var ds=dateStr(t);
+    if(DATA.calendar[ds])return ds;
+  }
+}
+function cellOf(ds){return table.querySelector('td.day-cell[data-date="'+ds+'"]')}
+function activeCell(target){var td=target&&target.closest?target.closest('td.day-cell'):null;return td?td.querySelector('.cell'):null}
+function applyFocus(){
+  var cells=table.querySelectorAll('.cell');
+  var linkedIds={};
+  if(state&&state.type==='day')(DATA.calendar[state.date]||[]).forEach(function(e){linkedIds[e.bookId]=true});
+  for(var i=0;i<cells.length;i++){
+    var td=cells[i].parentNode;
+    var date=td.getAttribute('data-date');
+    cells[i].classList.toggle('is-selected',!!(state&&state.type==='day'&&state.date===date));
+    var hit=!!(state&&state.type==='book'&&(td.getAttribute('data-ids')||'').split(',').indexOf(String(state.id))>=0);
+    cells[i].classList.toggle('book-hit',hit);
+    cells[i].classList.toggle('is-focused',hit);
+    td.classList.toggle('book-hit-cell',hit);
+  }
+  table.classList.toggle('is-book-focus',!!(state&&state.type==='book'));
+  var rows=rankList.querySelectorAll('.rank-row');
+  for(var j=0;j<rows.length;j++){
+    var rid=+rows[j].getAttribute('data-id');
+    rows[j].classList.toggle('is-focused',!!(state&&state.type==='book'&&rid===state.id));
+    rows[j].classList.toggle('is-linked',!!(state&&state.type==='day'&&linkedIds[rid]));
+  }
+  var chipBook=state&&state.type==='book'?booksById[state.id]:null;
+  if(chipBook){
+    rankChip.innerHTML=chipHtml('正在看：'+chipBook.shortTitle,'<img class="chip-cover" src="'+esc(chipBook.cover)+'" alt="">');
+    rankChip.hidden=false;
+  }else{rankChip.hidden=true;rankChip.innerHTML=''}
+  if(state&&state.type==='day'){
+    var entries=DATA.calendar[state.date]||[];
+    var total=entries.reduce(function(s,e){return s+e.minutes},0);
+    var dayChip='<div class="focus-chip">'+chipHtml('正在看：'+state.date,ICON_CAL)+'</div>';
+    detail.innerHTML='<div class="detail-head"><span class="detail-date">'+fullDate(parseDay(state.date))+'</span>'+
+      '<span class="detail-total">合计 '+fmtDuration(total)+'</span>'+dayChip+
+      '<button class="detail-close" type="button" aria-label="关闭详情">'+ICON_CLOSE+'</button></div>'+
+      '<div class="detail-list">'+entries.map(function(e){
+        var b=booksById[e.bookId];
+        return '<span class="detail-item"><img class="detail-cover" src="'+esc(b.cover)+'" alt="" data-id="'+b.id+'" decoding="async"><span class="detail-name">'+esc(b.shortTitle)+'</span><span class="detail-time">'+fmtDuration(e.minutes)+'</span></span>';
+      }).join('')+'</div>';
+    bindDetailCovers();
+  }else if(chipBook){
+    detail.innerHTML='<div class="detail-head"><span class="detail-date">'+esc(chipBook.shortTitle)+'</span>'+
+      '<span class="detail-total">'+fmtDuration(chipBook.minutes)+'</span>'+
+      '<button class="detail-close" type="button" aria-label="关闭详情">'+ICON_CLOSE+'</button></div>'+
+      '<div class="detail-list"><span class="detail-item"><img class="detail-cover" src="'+esc(chipBook.cover)+'" alt="" data-id="'+chipBook.id+'" decoding="async"><span class="detail-name">'+esc(chipBook.author)+'</span><span class="detail-time">'+chipBook.activeDays+' 天</span></span></div>';
+    bindDetailCovers();
+  }else{
+    detail.innerHTML='<span class="empty-hint">点击日历格子查看当日阅读详情</span>';
+  }
+}
+function bindDetailCovers(){
+  var imgs=detail.querySelectorAll('img.detail-cover');
+  for(var i=0;i<imgs.length;i++){
+    (function(img){var b=booksById[+img.getAttribute('data-id')];img.addEventListener('error',function(){var s=document.createElement('span');s.className='detail-cover fallback';s.style.setProperty('--cover-color',b.color);s.textContent=b.shortTitle.slice(0,1);img.replaceWith(s)})})(imgs[i]);
+  }
+}
+function clearFocus(){state=null;applyFocus()}
+function selectDay(ds){state={type:'day',date:ds};setRoving(ds);applyFocus()}
+function toggleBook(id){state=(state&&state.type==='book'&&state.id===id)?null:{type:'book',id:id};applyFocus()}
+
+function tipHtmlForDay(ds){
+  var entries=DATA.calendar[ds]||[];
+  var total=entries.reduce(function(s,e){return s+e.minutes},0);
+  return '<div class="tip-date">'+fullDate(parseDay(ds))+'</div>'+
+    '<div class="tip-total">合计 '+fmtDuration(total)+'</div>'+
+    '<div class="tip-list">'+entries.map(function(e){var b=booksById[e.bookId];return '<div class="tip-item">'+dotHtml(b)+'<span>'+esc(b.shortTitle)+'</span><span class="tip-time">'+fmtDuration(e.minutes)+'</span></div>'}).join('')+'</div>'+
+    '<div class="tip-foot">封面为当天阅读最久的书</div>';
+}
+function showTip(html,rect){
+  tip.innerHTML=html;tip.hidden=false;tip.classList.remove('is-visible');
+  var tw=tip.offsetWidth,th=tip.offsetHeight,gap=8;
+  var left=rect.left+rect.width/2-tw/2;
+  var top=rect.top-th-gap;
+  if(top<8)top=rect.bottom+gap;
+  left=Math.max(8,Math.min(left,window.innerWidth-tw-8));
+  top=Math.max(8,Math.min(top,window.innerHeight-th-8));
+  tip.style.left=left+'px';tip.style.top=top+'px';
+  requestAnimationFrame(function(){tip.classList.add('is-visible')});
+}
+function hideTip(){tip.classList.remove('is-visible');tip.hidden=true;clearTimeout(tipTimer)}
+
+function renderRank(){
+  var list=DATA.books.slice();
+  if(sortKey==='minutes')list.sort(function(a,b){return b.minutes-a.minutes});
+  else if(sortKey==='days')list.sort(function(a,b){return b.activeDays-a.activeDays||b.minutes-a.minutes});
+  else list.sort(function(a,b){return a.title.localeCompare(b.title,'zh-Hans-CN')});
+  rankList.innerHTML=list.map(function(b,i){
+    var w=8+92*Math.sqrt(b.minutes)/Math.sqrt(maxMinutes);
+    var num=i+1<10?'0'+(i+1):String(i+1);
+    var time=b.minutes>=60?'<span class="rank-time-num">'+(b.minutes/60).toFixed(1)+'</span><span class="rank-time-unit">h</span>':'<span class="rank-time-num">'+b.minutes+'</span><span class="rank-time-unit">分钟</span>';
+    return '<li class="rank-row" data-id="'+b.id+'" tabindex="0" role="button" aria-label="'+esc(b.shortTitle)+'，'+b.minutes+'分钟，'+b.activeDays+'天，按回车高亮日历中的阅读日">'+
+      '<span class="rank-num">'+num+'</span>'+
+      '<span class="rank-cover" style="--cover-color:'+esc(b.color)+'">'+'<img class="rank-cover-img" src="'+esc(b.cover)+'" alt="" decoding="async">'+'</span>'+
+      '<div class="rank-body"><div class="rank-title-line"><h3>'+esc(b.shortTitle)+'</h3><span class="rank-author">'+esc(b.author)+'</span></div>'+
+      '<span class="bar-track" data-min="'+b.minutes+'" aria-label="'+b.minutes+'分钟，占总时长'+(b.minutes/totalMinutes*100).toFixed(1)+'%"><span class="bar-fill" style="--w:'+w.toFixed(2)+'%;--cover-color:'+esc(b.color)+'"></span></span></div>'+
+      '<span class="rank-time">'+time+'<span class="rank-days">'+b.activeDays+' 天</span></span></li>';
+  }).join('');
+  var imgs=rankList.querySelectorAll('img.rank-cover-img');
+  for(var k=0;k<imgs.length;k++){
+    (function(img){
+      var book=booksById[+img.parentNode.parentNode.getAttribute('data-id')];
+      img.addEventListener('error',function(){var s=document.createElement('span');s.className='rank-cover-img fallback';s.textContent=book.shortTitle.slice(0,1);img.replaceWith(s)});
+    })(imgs[k]);
+  }
+  if(state&&state.type==='day'){
+    var ids=(DATA.calendar[state.date]||[]).map(function(e){return e.bookId});
+    for(var m=0;m<ids.length;m++){
+      var linked=rankList.querySelector('.rank-row[data-id="'+ids[m]+'"]');
+      if(linked)linked.classList.add('is-linked');
+    }
+  }
+}
+function setSort(key){
+  sortKey=key;
+  var btns=document.querySelectorAll('.sort-group button');
+  for(var i=0;i<btns.length;i++)btns[i].setAttribute('aria-pressed',String(btns[i].getAttribute('data-sort')===key));
+  sortNote.hidden=key==='minutes';
+  sortNote.textContent=key==='days'?'当前按天数↓排序，条长仍表示阅读时长':'当前按书名A→Z排序，条长仍表示阅读时长';
+  var active=document.querySelector('.sort-group button[data-sort="'+key+'"]');
+  renderRank();
+  applyFocus();
+  if(active)active.focus();
+}
+
+buildCalendar();
+setRoving(rovingDate||(table.querySelector('.cell')?table.querySelector('.cell').parentNode.getAttribute('data-date'):null));
+renderRank();
+applyFocus();
+
+table.addEventListener('click',function(e){
+  var cell=activeCell(e.target);
+  if(cell){selectDay(cell.parentNode.getAttribute('data-date'));return}
+  if(e.target.closest('.empty-cell')){clearFocus()}
+});
+table.addEventListener('focusin',function(e){
+  var cell=activeCell(e.target);
+  if(cell&&cell.parentNode.getAttribute('data-date')!==rovingDate)setRoving(cell.parentNode.getAttribute('data-date'));
+});
+table.addEventListener('keydown',function(e){
+  var cell=activeCell(e.target);if(!cell)return;
+  var ds=cell.parentNode.getAttribute('data-date'),next=null;
+  if(e.key==='ArrowUp')next=navigate(ds,0,-1);
+  else if(e.key==='ArrowDown')next=navigate(ds,0,1);
+  else if(e.key==='ArrowLeft')next=navigate(ds,-1,0);
+  else if(e.key==='ArrowRight')next=navigate(ds,1,0);
+  else if(e.key==='Home')next=navigate(ds,0,0,'home');
+  else if(e.key==='End')next=navigate(ds,0,0,'end');
+  else if(e.key==='Enter'||e.key===' '||e.key==='Spacebar'){e.preventDefault();selectDay(ds);return}
+  else if(e.key==='Escape'){e.preventDefault();clearFocus();return}
+  else return;
+  e.preventDefault();
+  if(next){setRoving(next);var t=cellOf(next);if(t)t.focus()}
+});
+table.addEventListener('mouseover',function(e){
+  var cell=e.target.closest('.cell');if(!cell)return;
+  clearTimeout(tipTimer);
+  var ds=cell.parentNode.getAttribute('data-date');
+  tipTimer=setTimeout(function(){showTip(tipHtmlForDay(ds),cell.getBoundingClientRect())},100);
+});
+table.addEventListener('mouseout',function(e){
+  if(e.target.closest('.cell')&&(!e.relatedTarget||!e.relatedTarget.closest('.cell')))hideTip();
+});
+table.addEventListener('focusout',function(e){if(activeCell(e.target))hideTip()});
+table.addEventListener('focusin',function(e){
+  var cell=activeCell(e.target);
+  if(cell){var ds=cell.parentNode.getAttribute('data-date');showTip(tipHtmlForDay(ds),cell.getBoundingClientRect())}
+});
+rankList.addEventListener('click',function(e){
+  var row=e.target.closest('.rank-row');if(row)toggleBook(+row.getAttribute('data-id'));
+});
+rankList.addEventListener('keydown',function(e){
+  var row=e.target.closest('.rank-row');if(!row)return;
+  if(e.key==='Enter'||e.key===' '||e.key==='Spacebar'){e.preventDefault();toggleBook(+row.getAttribute('data-id'))}
+});
+rankList.addEventListener('mouseover',function(e){
+  var bar=e.target.closest('.bar-track');if(!bar)return;
+  clearTimeout(tipTimer);
+  var min=+bar.getAttribute('data-min');
+  var html='<div class="tip-date">'+fmtDuration(min)+'</div><div class="tip-total">'+min+' 分钟，占总时长 '+(min/totalMinutes*100).toFixed(1)+'%</div>';
+  tipTimer=setTimeout(function(){showTip(html,bar.getBoundingClientRect())},100);
+});
+rankList.addEventListener('mouseout',function(e){if(e.target.closest('.bar-track')&&(!e.relatedTarget||!e.relatedTarget.closest('.bar-track')))hideTip()});
+document.querySelectorAll('.sort-group button').forEach(function(b){b.addEventListener('click',function(){setSort(b.getAttribute('data-sort'))})});
+[rankChip,detail].forEach(function(host){host.addEventListener('click',function(e){if(e.target.closest('.focus-chip button')){e.stopPropagation();clearFocus()}})});
+detail.addEventListener('click',function(e){if(e.target.closest('.detail-close'))clearFocus()});
+document.addEventListener('click',function(e){
+  if(state&&state.type==='day'&&!e.target.closest('.calendar-card'))clearFocus();
+  if(state&&state.type==='book'&&!e.target.closest('.rank-row')&&!e.target.closest('.day-cell')&&!e.target.closest('.focus-chip')&&!e.target.closest('.sort-group')&&!e.target.closest('.day-detail'))clearFocus();
+});
+document.addEventListener('keydown',function(e){if(e.key==='Escape'&&state){clearFocus()}});
+var anchors=Array.prototype.slice.call(document.querySelectorAll('.anchors a'));
+if('IntersectionObserver' in window){
+  var io=new IntersectionObserver(function(entries){
+    entries.forEach(function(en){
+      if(en.isIntersecting)anchors.forEach(function(a){a.setAttribute('aria-current',String(a.getAttribute('data-anchor')===en.target.id))});
+    });
+  },{rootMargin:'-15% 0px -70% 0px'});
+  ['calendar','ranking'].forEach(function(id){var el=document.getElementById(id);if(el)io.observe(el)});
+}
+})();
+</script>
+</body>
+</html>
