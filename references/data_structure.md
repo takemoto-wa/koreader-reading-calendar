@@ -78,6 +78,7 @@ epub 是 zip 包，封面定位流程：
 ```
 
 - `books` 按 `seconds` 降序；`calendar` 每个日期的书也按时长降序。
+- **英文书保留英文原名（用户明确要求，勿自动翻译）**：`build_data.py` 的 `display_title()` 对英文书（language 以 en 开头，或标题为纯拉丁字母）忽略含中文字符的 `--names` 短名覆盖，改用原版英文书名；`title` 字段始终为数据库原始书名。前端展示 `shortTitle` 即为英文原名。
 - `calendar` 只含有阅读的日期，前端按 `firstDay~lastDay` 补齐空格。
 - **id 非连续**：前端所有 `calendar[date].bookId → books[].id` 关联必须按 id 映射，不可用数组下标。
 

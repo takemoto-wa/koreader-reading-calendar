@@ -59,6 +59,7 @@ python scripts/build_data.py \
 - `--threshold` — minimum reading time in **seconds** (300 = 5 minutes).
 - `--merge` — merge duplicate editions of the same book (`alias id → canonical id`).
 - `--covers` — explicitly assign a cover for a book (value can be an epub filename, an absolute image path, or a filename in `--fallback-dir`).
+- `--names` — assign a short display title. **English-language books always keep their original English title**: a name containing Chinese characters is ignored for them (no auto-translation is ever performed). English name overrides still work.
 
 Covers are matched automatically by book title + author against epub metadata. See [Step 2b](#step-2b-optional-generate-fallback-covers) for books with no epub available.
 
@@ -127,6 +128,7 @@ See [references/data_structure.md](references/data_structure.md) for the full sc
 ## Important notes
 
 - **Durations are in seconds** — a 5-minute threshold is `300`.
+- **English books keep their original English titles — never auto-translate.** `display_title()` in `build_data.py` ignores any Chinese `--names` override for English books, so the calendar and leaderboard always show the original title (e.g. *The Martian*, *Project Hail Mary*). This is an explicit user requirement — do not add translation logic.
 - **Book ids are not necessarily contiguous** (e.g. 6, 20, 25). All `bookId → book` lookups must map by id, never by array index, or the cross-view highlighting will silently fail.
 - **Duplicate editions** of the same work may have different ids. Ask whether to merge before using `--merge`.
 - `book.total_read_time` should closely match `SUM(page_stat_data.duration)` grouped by day (within a few seconds); a large mismatch indicates anomalous data.

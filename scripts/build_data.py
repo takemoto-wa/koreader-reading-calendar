@@ -20,6 +20,8 @@ Arguments:
   --covers      JSON map canonical book id -> cover image filename (relative to --epub-root scan
                 or absolute path). If omitted, auto-match covers by book title/epub metadata.
   --names       JSON map book id -> short display title. Falls back to a smart-truncated book title.
+                NOTE: For English-language books the original English title is always kept;
+                a --names value containing Chinese characters is ignored (no auto-translation).
   --colors      JSON map book id -> hex accent color. Falls back to a generated palette color.
   --fallback-dir  Folder with pre-generated covers to use when epub has no embedded cover.
 
@@ -153,6 +155,38 @@ def smart_short(title, maxlen=14):
     t = re.sub(r'：.*', '', t).strip()
     return (t[:maxlen] + '…') if len(t) > maxlen else (t or '未命名')
 
+# ---------- display title: English books keep their ORIGINAL English name ----------
+CJK_RE = re.compile(r'[\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff]')
+
+def is_english_book(language, title):
+    """Detect an English-language book from the DB language field or by title script."""
+    lang = (language or '').strip().lower()
+    if lang.startswith('en') or lang in ('eng', 'english'):
+        return True
+    if not lang or lang in ('n/a', 'none', 'null'):
+        # fall back to title: if it has Latin letters but no CJK, treat as English
+        text = title or ''
+        return bool(re.search(r'[A-Za-z]{2,}', text)) and not CJK_RE.search(text)
+    return False
+
+def display_title(title, language, name_override, maxlen_en=30):
+    """Return the short display title.
+
+    Rule (user requirement): English books MUST keep their original English title.
+    A --names override is honoured only when it contains no CJK characters for an
+    English book; otherwise it is treated as an auto-translation and discarded.
+    Non-English (e.g. Chinese) books behave as before.
+    """
+    english = is_english_book(language, title)
+    if name_override:
+        if not (english and CJK_RE.search(name_override)):
+            return name_override
+    if english:
+        t = re.sub(r'[（(].*?[)）]', '', title or '')
+        t = re.sub(r'\s+', ' ', t).strip()
+        return (t[:maxlen_en].rstrip() + '…') if len(t) > maxlen_en else (t or 'Untitled')
+    return smart_short(title)
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('--db', required=True)
@@ -238,7 +272,7 @@ def main():
 
         books.append({
             'id':bid, 'title':primary['title'],
-            'shortTitle':NAMES.get(bid) or smart_short(primary['title']),
+            'shortTitle':display_title(primary['title'], primary['language'], NAMES.get(bid)),
             'author':primary['authors'] or '',
             'seconds':seconds, 'minutes':round(seconds/60),
             'pages':pages, 'readPages':read_pages,
